@@ -362,10 +362,13 @@ function initializeScheduleInputs() {
             dayCard.classList.add('completed');
         }
         
+        // Display net hours (break deduction applied behind the scenes)
+        let hoursDisplay = dayData.hours > 0 ? `${dayData.hours.toFixed(1)} hrs` : '0.0 hrs';
+        
         dayCard.innerHTML = `
             <div class="day-header">
                 <span class="day-name">${dayNames[i]}</span>
-                <span class="day-total" id="total-${i}">${dayData.hours > 0 ? dayData.hours.toFixed(1) + ' hrs' : '0.0 hrs'}</span>
+                <span class="day-total" id="total-${i}">${hoursDisplay}</span>
             </div>
             <div class="day-inputs">
                 <div class="form-group">
@@ -406,23 +409,35 @@ function calculateDayHours(dayIndex) {
     const end = endInput.value;
     
     if (start && end) {
-        const hours = calculateHoursBetween(start, end);
+        const grossHours = calculateHoursBetween(start, end);
+        const netHours = calculateNetWorkHours(start, end);
+        
         workData.dailyHours[dayIndex] = {
             day: dayNames[dayIndex],
             start: start,
             end: end,
-            hours: hours
+            grossHours: grossHours,
+            netHours: netHours,
+            hours: netHours // Store net hours as the main hours value
         };
         
-        totalDisplay.textContent = `${hours.toFixed(1)} hrs`;
+        // Display net hours (break deduction applied behind the scenes)
+        totalDisplay.textContent = `${netHours.toFixed(1)} hrs`;
         
-        if (hours > 0) {
+        if (netHours > 0) {
             dayCard.classList.add('completed');
         } else {
             dayCard.classList.remove('completed');
         }
     } else {
-        workData.dailyHours[dayIndex].hours = 0;
+        workData.dailyHours[dayIndex] = {
+            day: dayNames[dayIndex],
+            start: '',
+            end: '',
+            grossHours: 0,
+            netHours: 0,
+            hours: 0
+        };
         totalDisplay.textContent = '0.0 hrs';
         dayCard.classList.remove('completed');
     }
@@ -449,6 +464,17 @@ function calculateHoursBetween(startTime, endTime) {
     }
     
     return hours + (minutes / 60);
+}
+
+function calculateNetWorkHours(startTime, endTime) {
+    const grossHours = calculateHoursBetween(startTime, endTime);
+    
+    // Apply 30-minute unpaid break deduction for workdays of 6+ hours
+    if (grossHours >= 6) {
+        return Math.max(0, grossHours - 0.5); // Deduct 30 minutes (0.5 hours)
+    }
+    
+    return grossHours;
 }
 
 function isValidTimeRange(startTime, endTime, earliestStart, latestEnd) {
@@ -604,12 +630,14 @@ function updateWeeklyChart() {
     let html = '';
     workData.dailyHours.forEach((day, i) => {
         const percentage = (day.hours / maxHours) * 100;
+        let hoursDisplay = day.hours > 0 ? day.hours.toFixed(1) + 'h' : '';
+        
         html += `
             <div class="chart-bar">
                 <div class="chart-label">${dayNames[i]}</div>
                 <div class="chart-bar-bg">
                     <div class="chart-bar-fill" style="width: ${Math.min(percentage, 100)}%">
-                        ${day.hours > 0 ? day.hours.toFixed(1) + 'h' : ''}
+                        ${hoursDisplay}
                     </div>
                 </div>
             </div>
@@ -1009,14 +1037,19 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
             dayHours = calculateHoursBetween(startTime, endTime);
         }
         
+        const grossHours = calculateHoursBetween(startTime, endTime);
+        const netHours = calculateNetWorkHours(startTime, endTime);
+        
         schedule.push({
             day: day.day || dayNames[dayIndex],
             start: startTime,
             end: endTime,
-            hours: dayHours
+            grossHours: grossHours,
+            netHours: netHours,
+            hours: netHours
         });
         
-        hoursLeft -= dayHours;
+        hoursLeft -= netHours;
     });
     
     return schedule;
