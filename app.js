@@ -169,6 +169,58 @@ function calculateHoursBetween(startTime, endTime) {
     return hours + (minutes / 60);
 }
 
+function isValidTimeRange(startTime, endTime, earliestStart, latestEnd) {
+    // Check if times are within work day boundaries
+    if (startTime < earliestStart || endTime > latestEnd) {
+        return false;
+    }
+    
+    // Check if start time is before end time (no overnight shifts)
+    if (startTime >= endTime) {
+        return false;
+    }
+    
+    return true;
+}
+
+function adjustTimeToWorkHours(startTime, endTime, earliestStart, latestEnd, targetHours) {
+    // If the times are valid, return them
+    if (isValidTimeRange(startTime, endTime, earliestStart, latestEnd)) {
+        return { startTime, endTime, hours: calculateHoursBetween(startTime, endTime) };
+    }
+    
+    // Try to fit the target hours within work hours
+    let adjustedStart = startTime;
+    let adjustedEnd = endTime;
+    
+    // If start time is too early, move it to earliest start
+    if (adjustedStart < earliestStart) {
+        adjustedStart = earliestStart;
+        adjustedEnd = addHours(adjustedStart, targetHours);
+        
+        // If this would exceed latest end, use full range
+        if (adjustedEnd > latestEnd) {
+            adjustedStart = earliestStart;
+            adjustedEnd = latestEnd;
+        }
+    }
+    
+    // If end time is too late, move it to latest end
+    if (adjustedEnd > latestEnd) {
+        adjustedEnd = latestEnd;
+        adjustedStart = subtractHours(adjustedEnd, targetHours);
+        
+        // If this would be before earliest start, use full range
+        if (adjustedStart < earliestStart) {
+            adjustedStart = earliestStart;
+            adjustedEnd = latestEnd;
+        }
+    }
+    
+    const actualHours = calculateHoursBetween(adjustedStart, adjustedEnd);
+    return { startTime: adjustedStart, endTime: adjustedEnd, hours: actualHours };
+}
+
 function clearAllHours() {
     if (confirm('Clear all logged hours?')) {
         workData.dailyHours.forEach((day, i) => {
@@ -489,49 +541,72 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
     const schedule = [];
     let hoursLeft = remainingHours;
     
+    // Calculate a more flexible distribution of hours
+    const numDays = unworkedDays.length;
+    const baseHoursPerDay = Math.floor(remainingHours / numDays);
+    const extraHours = remainingHours % numDays;
+    
     unworkedDays.forEach((day, index) => {
         const dayIndex = workData.dailyHours.indexOf(day);
         const dayConstraint = workData.constraints.find(c => c.day === dayIndex);
         
-        let dayHours, startTime, endTime;
-        
-        // Check if this is the last day
-        const isLastDay = index === unworkedDays.length - 1;
-        
-        if (isLastDay) {
-            dayHours = hoursLeft;
-        } else {
-            dayHours = Math.min(idealDayLength, hoursLeft / (unworkedDays.length - index));
+        // Distribute hours more flexibly - give extra hours to first few days
+        let dayHours = baseHoursPerDay;
+        if (index < extraHours) {
+            dayHours += 1;
         }
         
-        // Apply constraints
+        // Ensure we don't exceed maximum possible hours for the day
+        dayHours = Math.min(dayHours, maxDayLength);
+        
+        let startTime, endTime;
+        
+        // Apply constraints first
         if (dayConstraint) {
             if (dayConstraint.type === 'mustLeaveBy') {
                 endTime = dayConstraint.value;
                 const maxPossibleHours = calculateHoursBetween(earliestStart, endTime);
                 dayHours = Math.min(dayHours, maxPossibleHours);
                 startTime = subtractHours(endTime, dayHours);
+                
+                // Ensure start time is not before earliest start
+                if (startTime < earliestStart) {
+                    startTime = earliestStart;
+                    dayHours = calculateHoursBetween(startTime, endTime);
+                }
             } else if (dayConstraint.type === 'mustStartAfter') {
                 startTime = dayConstraint.value;
                 const maxPossibleHours = calculateHoursBetween(startTime, latestEnd);
                 dayHours = Math.min(dayHours, maxPossibleHours);
                 endTime = addHours(startTime, dayHours);
+                
+                // Ensure end time is not after latest end
+                if (endTime > latestEnd) {
+                    endTime = latestEnd;
+                    dayHours = calculateHoursBetween(startTime, endTime);
+                }
             } else if (dayConstraint.type === 'maxHours') {
                 dayHours = Math.min(dayHours, parseFloat(dayConstraint.value));
                 startTime = idealStart;
                 endTime = addHours(startTime, dayHours);
             }
         } else {
-            // No constraints, use ideal times
+            // No constraints - try to use ideal times first
             startTime = idealStart;
             endTime = addHours(startTime, dayHours);
             
-            // Check if it exceeds preferences
-            if (calculateHoursBetween(startTime, endTime) > maxDayLength) {
-                startTime = earliestStart;
-                endTime = latestEnd;
-                dayHours = maxDayLength;
-            }
+            // Use the helper function to ensure times are valid
+            const adjusted = adjustTimeToWorkHours(startTime, endTime, earliestStart, latestEnd, dayHours);
+            startTime = adjusted.startTime;
+            endTime = adjusted.endTime;
+            dayHours = adjusted.hours;
+        }
+        
+        // Final validation - ensure times are within work hours
+        if (!isValidTimeRange(startTime, endTime, earliestStart, latestEnd)) {
+            startTime = earliestStart;
+            endTime = latestEnd;
+            dayHours = calculateHoursBetween(startTime, endTime);
         }
         
         schedule.push({
@@ -550,16 +625,27 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
 function addHours(time, hours) {
     const [hour, min] = time.split(':').map(Number);
     const totalMinutes = (hour * 60) + min + (hours * 60);
-    const newHour = Math.floor(totalMinutes / 60) % 24;
+    const newHour = Math.floor(totalMinutes / 60);
     const newMin = Math.floor(totalMinutes % 60);
+    
+    // Ensure we don't go beyond 23:59
+    if (newHour >= 24) {
+        return "23:59";
+    }
+    
     return `${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`;
 }
 
 function subtractHours(time, hours) {
     const [hour, min] = time.split(':').map(Number);
     let totalMinutes = (hour * 60) + min - (hours * 60);
-    if (totalMinutes < 0) totalMinutes += 24 * 60;
-    const newHour = Math.floor(totalMinutes / 60) % 24;
+    
+    // Ensure we don't go below 00:00
+    if (totalMinutes < 0) {
+        return "00:00";
+    }
+    
+    const newHour = Math.floor(totalMinutes / 60);
     const newMin = Math.floor(totalMinutes % 60);
     return `${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`;
 }
@@ -569,14 +655,29 @@ function checkConstraints(schedule) {
     const prefs = workData.preferences;
     
     schedule.forEach(day => {
+        // Check if start time is before earliest start
         if (day.start < prefs.earliestStart) {
             warnings.push(`${day.day}: Starts at ${day.start}, which is before your earliest preferred start time (${prefs.earliestStart})`);
         }
+        
+        // Check if end time is after latest end
         if (day.end > prefs.latestEnd) {
             warnings.push(`${day.day}: Ends at ${day.end}, which is after your latest preferred end time (${prefs.latestEnd})`);
         }
+        
+        // Check for very long work days
         if (day.hours > 10) {
-            warnings.push(`${day.day}: ${day.hours.toFixed(1)} hours is a very long work day`);
+            warnings.push(`${day.day}: ${day.hours.toFixed(1)} hours is a very long work day - consider breaking it up`);
+        }
+        
+        // Check for impossible schedules (overnight shifts)
+        if (day.start > day.end) {
+            warnings.push(`${day.day}: Invalid schedule - start time (${day.start}) is after end time (${day.end})`);
+        }
+        
+        // Check for very short work days that might not be realistic
+        if (day.hours > 0 && day.hours < 1) {
+            warnings.push(`${day.day}: Very short work day (${day.hours.toFixed(1)} hours) - consider combining with another day`);
         }
     });
     
