@@ -39,6 +39,11 @@ body {
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* iOS Safari specific fixes */
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    /* Prevent zoom on input focus */
+    -webkit-text-size-adjust: none;
 }
 
 /* iOS Safari specific fixes */
@@ -60,58 +65,76 @@ input[type="number"] {
 /* Layout */
 .app-wrapper {
     display: flex;
+    flex-direction: column;
     min-height: 100vh;
 }
 
-/* Sidebar */
-.sidebar {
-    width: 260px;
+/* Top Navigation */
+.top-nav {
     background: var(--white);
-    border-right: 1px solid var(--gray-200);
-    padding: 24px 0;
-    position: fixed;
-    height: 100vh;
-    left: 0;
+    border-bottom: 1px solid var(--gray-200);
+    box-shadow: var(--shadow);
+    position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: var(--shadow);
-    overflow-y: auto;
+    width: 100%;
+}
+
+.nav-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 .logo {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 0 24px 24px;
-    border-bottom: 1px solid var(--gray-200);
-    margin-bottom: 24px;
+    flex-shrink: 0;
 }
 
 .logo-icon {
-    font-size: 32px;
+    font-size: 28px;
     flex-shrink: 0;
 }
 
 .logo-text {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--primary);
 }
 
 .nav-menu {
     list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    flex: 1;
+    justify-content: center;
 }
 
 .nav-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 24px;
+    gap: 8px;
+    padding: 12px 16px;
     cursor: pointer;
     transition: all 0.2s;
     color: var(--gray-700);
     font-weight: 500;
     user-select: none;
+    border-radius: 8px;
+    white-space: nowrap;
+    /* Touch improvements */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    min-height: 44px; /* iOS recommended touch target size */
 }
 
 .nav-item:hover {
@@ -122,24 +145,24 @@ input[type="number"] {
 .nav-item.active {
     background: var(--primary);
     color: var(--white);
-    border-right: 4px solid var(--primary-dark);
 }
 
 .nav-icon {
-    font-size: 20px;
+    font-size: 18px;
     flex-shrink: 0;
 }
 
 .nav-label {
-    flex: 1;
+    font-size: 14px;
 }
 
 /* Main Container */
 .main-container {
     flex: 1;
-    margin-left: 260px;
-    padding: 40px;
+    padding: 24px;
     max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 .content-section {
@@ -660,18 +683,20 @@ input[type="number"] {
 
 /* Responsive Design */
 @media (max-width: 1024px) {
-    .sidebar {
-        width: 80px;
+    .nav-container {
+        padding: 12px 20px;
     }
     
-    .logo-text,
+    .nav-item {
+        padding: 10px 12px;
+    }
+    
     .nav-label {
-        display: none;
+        font-size: 13px;
     }
     
     .main-container {
-        margin-left: 80px;
-        padding: 30px 20px;
+        padding: 20px;
     }
     
     .dashboard-grid {
@@ -684,44 +709,29 @@ input[type="number"] {
 }
 
 @media (max-width: 768px) {
-    .app-wrapper {
+    .nav-container {
+        padding: 12px 16px;
         flex-direction: column;
-    }
-    
-    .sidebar {
-        width: 100%;
-        height: auto;
-        position: static;
-        border-right: none;
-        border-bottom: 1px solid var(--gray-200);
-        padding: 12px 0;
+        gap: 12px;
     }
     
     .logo {
-        padding: 12px 20px;
-        margin-bottom: 0;
-        border-bottom: none;
-    }
-    
-    .logo-text {
-        display: block;
+        align-self: flex-start;
     }
     
     .nav-menu {
-        display: flex;
+        width: 100%;
+        justify-content: space-between;
         overflow-x: auto;
-        padding: 8px 12px;
-        gap: 8px;
         -webkit-overflow-scrolling: touch;
+        padding: 0 4px;
     }
     
     .nav-item {
         flex-direction: column;
-        padding: 12px 16px;
+        padding: 10px 12px;
         text-align: center;
-        min-width: 80px;
-        border-right: none;
-        border-bottom: 3px solid transparent;
+        min-width: 70px;
         border-radius: 8px;
         white-space: nowrap;
     }
@@ -729,24 +739,19 @@ input[type="number"] {
     .nav-item.active {
         background: var(--primary);
         color: var(--white);
-        border-bottom-color: var(--primary-dark);
-        border-right: none;
     }
     
     .nav-label {
-        display: block;
         font-size: 11px;
         margin-top: 4px;
     }
     
     .nav-icon {
-        font-size: 18px;
+        font-size: 16px;
     }
     
     .main-container {
-        margin-left: 0;
-        padding: 20px;
-        width: 100%;
+        padding: 16px;
     }
     
     .section-header h1 {
@@ -796,6 +801,36 @@ input[type="number"] {
 }
 
 @media (max-width: 480px) {
+    .nav-container {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+    
+    .logo-text {
+        font-size: 18px;
+    }
+    
+    .logo-icon {
+        font-size: 24px;
+    }
+    
+    .nav-item {
+        padding: 8px 10px;
+        min-width: 60px;
+    }
+    
+    .nav-label {
+        font-size: 10px;
+    }
+    
+    .nav-icon {
+        font-size: 14px;
+    }
+    
+    .main-container {
+        padding: 12px;
+    }
+    
     .card-body {
         padding: 16px;
     }
@@ -806,5 +841,77 @@ input[type="number"] {
     
     .dashboard-grid {
         gap: 16px;
+    }
+    
+    .section-header h1 {
+        font-size: 20px;
+    }
+    
+    .stat-card {
+        padding: 16px;
+    }
+    
+    .stat-value {
+        font-size: 20px;
+    }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+    .top-nav {
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        /* Ensure nav stays at top when address bar hides/shows */
+        position: -webkit-sticky;
+        position: sticky;
+    }
+    
+    .nav-menu {
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .main-container {
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Fix for iOS Safari viewport issues */
+    .app-wrapper {
+        min-height: -webkit-fill-available;
+    }
+    
+    /* Prevent horizontal scrolling on iOS */
+    .nav-container {
+        overflow-x: hidden;
+    }
+    
+    /* Ensure proper touch targets on iOS */
+    .nav-item {
+        min-height: 44px;
+        min-width: 44px;
+    }
+}
+
+/* Additional mobile optimizations */
+@media (max-width: 320px) {
+    .nav-container {
+        padding: 8px;
+        gap: 6px;
+    }
+    
+    .logo-text {
+        font-size: 16px;
+    }
+    
+    .nav-item {
+        padding: 6px 8px;
+        min-width: 50px;
+    }
+    
+    .nav-label {
+        font-size: 9px;
+    }
+    
+    .main-container {
+        padding: 8px;
     }
 }
