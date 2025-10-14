@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeNavigation();
     loadFromStorage();
     initializeScheduleInputs();
+    loadConstraints();
     updateDashboard();
     
     // Event Listeners
@@ -59,12 +60,152 @@ function navigateTo(section) {
 
 // Storage Functions
 function saveToStorage() {
-    // Note: In production, use localStorage or IndexedDB
-    // For now, keeping in memory
+    try {
+        // Save all work data to localStorage
+        localStorage.setItem('flexitime_workData', JSON.stringify(workData));
+        console.log('Data saved to localStorage');
+        
+        // Show visual feedback that data was saved
+        showSaveNotification();
+    } catch (error) {
+        console.error('Error saving to localStorage:', error);
+        showErrorNotification('Failed to save data');
+    }
+}
+
+function showSaveNotification() {
+    // Create a temporary notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--success);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: var(--shadow-lg);
+        z-index: 1000;
+        font-size: 14px;
+        font-weight: 500;
+        opacity: 0;
+        transform: translateY(-20px);
+        transition: all 0.3s ease;
+    `;
+    notification.textContent = 'Data saved';
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateY(0)';
+    }, 10);
+    
+    // Remove after 2 seconds
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateY(-20px)';
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 300);
+    }, 2000);
+}
+
+function showErrorNotification(message) {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--danger);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: var(--shadow-lg);
+        z-index: 1000;
+        font-size: 14px;
+        font-weight: 500;
+        opacity: 0;
+        transform: translateY(-20px);
+        transition: all 0.3s ease;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateY(0)';
+    }, 10);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateY(-20px)';
+        setTimeout(() => {
+            document.body.removeChild(notification);
+        }, 300);
+    }, 3000);
+}
+
+function clearAllData() {
+    if (confirm('Are you sure you want to clear all data? This will remove all your work hours, preferences, and constraints.')) {
+        try {
+            localStorage.removeItem('flexitime_workData');
+            
+            // Reset to default values
+            workData = {
+                weeklyTarget: 40,
+                numDays: 5,
+                dailyHours: [],
+                constraints: [],
+                preferences: {
+                    earliestStart: '07:00',
+                    latestEnd: '19:00',
+                    idealStart: '09:00',
+                    idealEnd: '17:00'
+                }
+            };
+            
+            // Reload the UI
+            loadFromStorage();
+            initializeScheduleInputs();
+            loadConstraints();
+            updateDashboard();
+            
+            showSaveNotification('All data cleared');
+        } catch (error) {
+            console.error('Error clearing data:', error);
+            showErrorNotification('Failed to clear data');
+        }
+    }
 }
 
 function loadFromStorage() {
-    // Load preferences
+    try {
+        // Try to load saved data from localStorage
+        const savedData = localStorage.getItem('flexitime_workData');
+        if (savedData) {
+            const parsedData = JSON.parse(savedData);
+            
+            // Merge saved data with defaults
+            workData = {
+                ...workData,
+                ...parsedData,
+                preferences: {
+                    ...workData.preferences,
+                    ...parsedData.preferences
+                }
+            };
+            
+            console.log('Data loaded from localStorage');
+        }
+    } catch (error) {
+        console.error('Error loading from localStorage:', error);
+        // If loading fails, use default values
+    }
+    
+    // Update UI with loaded data
     document.getElementById('weeklyTarget').value = workData.weeklyTarget;
     document.getElementById('numDays').value = workData.numDays;
     document.getElementById('earliestStart').value = workData.preferences.earliestStart;
@@ -93,10 +234,15 @@ function initializeScheduleInputs() {
         dayCard.className = 'day-card';
         dayCard.id = `day-${i}`;
         
+        // Add completed class if hours are logged
+        if (dayData.hours > 0) {
+            dayCard.classList.add('completed');
+        }
+        
         dayCard.innerHTML = `
             <div class="day-header">
                 <span class="day-name">${dayNames[i]}</span>
-                <span class="day-total" id="total-${i}">0.0 hrs</span>
+                <span class="day-total" id="total-${i}">${dayData.hours > 0 ? dayData.hours.toFixed(1) + ' hrs' : '0.0 hrs'}</span>
             </div>
             <div class="day-inputs">
                 <div class="form-group">
@@ -278,6 +424,7 @@ function handleTargetChange() {
 
 function handleDaysChange() {
     initializeScheduleInputs();
+    loadConstraints();
     updateDashboard();
     saveToStorage();
 }
@@ -347,6 +494,55 @@ function addConstraint() {
     });
     
     saveToStorage();
+}
+
+function loadConstraints() {
+    const container = document.getElementById('constraintsContainer');
+    container.innerHTML = '';
+    
+    if (workData.constraints.length === 0) {
+        container.innerHTML = '<p class="empty-state">No constraints added. Click "+ Add Constraint" to add one.</p>';
+        return;
+    }
+    
+    workData.constraints.forEach(constraint => {
+        const constraintDiv = document.createElement('div');
+        constraintDiv.className = 'constraint-item';
+        constraintDiv.id = `constraint-${constraint.id}`;
+        
+        constraintDiv.innerHTML = `
+            <div class="constraint-content">
+                <select class="form-control" id="constraint-day-${constraint.id}">
+                    ${dayNames.slice(0, workData.numDays).map((day, i) => 
+                        `<option value="${i}" ${i === constraint.day ? 'selected' : ''}>${day}</option>`
+                    ).join('')}
+                </select>
+                <select class="form-control" id="constraint-type-${constraint.id}">
+                    <option value="mustLeaveBy" ${constraint.type === 'mustLeaveBy' ? 'selected' : ''}>Must leave by</option>
+                    <option value="mustStartAfter" ${constraint.type === 'mustStartAfter' ? 'selected' : ''}>Must start after</option>
+                    <option value="maxHours" ${constraint.type === 'maxHours' ? 'selected' : ''}>Max hours</option>
+                </select>
+                <input type="${constraint.type === 'maxHours' ? 'number' : 'time'}" class="form-control" id="constraint-value-${constraint.id}" value="${constraint.value}">
+            </div>
+            <button class="constraint-remove" onclick="removeConstraint(${constraint.id})">Remove</button>
+        `;
+        
+        container.appendChild(constraintDiv);
+        
+        // Add event listeners
+        document.getElementById(`constraint-day-${constraint.id}`).addEventListener('change', function() {
+            updateConstraint(constraint.id, 'day', parseInt(this.value));
+        });
+        
+        document.getElementById(`constraint-type-${constraint.id}`).addEventListener('change', function() {
+            updateConstraint(constraint.id, 'type', this.value);
+            updateConstraintInputType(constraint.id, this.value);
+        });
+        
+        document.getElementById(`constraint-value-${constraint.id}`).addEventListener('change', function() {
+            updateConstraint(constraint.id, 'value', this.value);
+        });
+    });
 }
 
 function updateConstraintInputType(constraintId, type) {
