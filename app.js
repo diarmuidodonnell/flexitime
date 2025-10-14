@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeScheduleInputs();
     loadConstraints();
     updateDashboard();
+    updateStorageStatus();
     
     // Event Listeners
     document.getElementById('weeklyTarget').addEventListener('change', handleTargetChange);
@@ -29,6 +30,46 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('latestEnd').addEventListener('change', savePreferences);
     document.getElementById('idealStart').addEventListener('change', savePreferences);
     document.getElementById('idealEnd').addEventListener('change', savePreferences);
+    
+    // Save data when the page is about to be unloaded (important for PWA)
+    window.addEventListener('beforeunload', function() {
+        console.log('Page is about to unload, saving data...');
+        saveToStorage();
+    });
+    
+    // Save data when the page becomes hidden (when PWA is closed)
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            console.log('Page is hidden, saving data...');
+            saveToStorage();
+        }
+    });
+    
+    // Save data when the page is about to be hidden (iOS Safari specific)
+    window.addEventListener('pagehide', function() {
+        console.log('Page is being hidden, saving data...');
+        saveToStorage();
+    });
+    
+    // Additional save on focus loss (when switching apps)
+    window.addEventListener('blur', function() {
+        console.log('Window lost focus, saving data...');
+        saveToStorage();
+    });
+    
+    // Periodic save as backup (every 30 seconds)
+    setInterval(function() {
+        console.log('Periodic save...');
+        saveToStorage();
+    }, 30000);
+    
+    // Save data when inputs change (additional safety)
+    document.addEventListener('input', function(event) {
+        if (event.target.type === 'time' || event.target.type === 'number') {
+            console.log('Input changed, saving data...');
+            setTimeout(saveToStorage, 100); // Small delay to ensure value is updated
+        }
+    });
 });
 
 // Navigation
@@ -61,12 +102,25 @@ function navigateTo(section) {
 // Storage Functions
 function saveToStorage() {
     try {
-        // Save all work data to localStorage
-        localStorage.setItem('flexitime_workData', JSON.stringify(workData));
-        console.log('Data saved to localStorage');
+        // Create a deep copy to avoid reference issues
+        const dataToSave = JSON.parse(JSON.stringify(workData));
         
-        // Show visual feedback that data was saved
-        showSaveNotification();
+        // Save all work data to localStorage
+        localStorage.setItem('flexitime_workData', JSON.stringify(dataToSave));
+        console.log('Data saved to localStorage:', dataToSave);
+        
+        // Verify the data was saved by reading it back
+        const savedData = localStorage.getItem('flexitime_workData');
+        if (savedData) {
+            console.log('Data verification successful');
+            // Show visual feedback that data was saved
+            showSaveNotification();
+            // Update storage status
+            updateStorageStatus();
+        } else {
+            console.error('Data verification failed - data not found after saving');
+            showErrorNotification('Data not saved properly');
+        }
     } catch (error) {
         console.error('Error saving to localStorage:', error);
         showErrorNotification('Failed to save data');
@@ -172,6 +226,7 @@ function clearAllData() {
             initializeScheduleInputs();
             loadConstraints();
             updateDashboard();
+            updateStorageStatus();
             
             showSaveNotification('All data cleared');
         } catch (error) {
@@ -181,12 +236,61 @@ function clearAllData() {
     }
 }
 
+function testStorage() {
+    try {
+        // Test if localStorage is available
+        const testKey = 'flexitime_test';
+        const testValue = 'test_data_' + Date.now();
+        
+        localStorage.setItem(testKey, testValue);
+        const retrieved = localStorage.getItem(testKey);
+        localStorage.removeItem(testKey);
+        
+        if (retrieved === testValue) {
+            showSaveNotification('Storage test passed!');
+            updateStorageStatus();
+        } else {
+            showErrorNotification('Storage test failed!');
+        }
+    } catch (error) {
+        console.error('Storage test error:', error);
+        showErrorNotification('Storage not available: ' + error.message);
+    }
+}
+
+function updateStorageStatus() {
+    try {
+        const savedData = localStorage.getItem('flexitime_workData');
+        const statusElement = document.getElementById('storageStatus');
+        const lastSaveElement = document.getElementById('lastSave');
+        const dataSizeElement = document.getElementById('dataSize');
+        
+        if (statusElement) {
+            statusElement.textContent = savedData ? 'Available' : 'No data';
+            statusElement.style.color = savedData ? 'var(--success)' : 'var(--warning)';
+        }
+        
+        if (lastSaveElement) {
+            lastSaveElement.textContent = new Date().toLocaleTimeString();
+        }
+        
+        if (dataSizeElement) {
+            dataSizeElement.textContent = savedData ? (savedData.length + ' bytes') : '0 bytes';
+        }
+    } catch (error) {
+        console.error('Error updating storage status:', error);
+    }
+}
+
 function loadFromStorage() {
     try {
         // Try to load saved data from localStorage
         const savedData = localStorage.getItem('flexitime_workData');
+        console.log('Loading data from localStorage:', savedData);
+        
         if (savedData) {
             const parsedData = JSON.parse(savedData);
+            console.log('Parsed data:', parsedData);
             
             // Merge saved data with defaults
             workData = {
@@ -198,7 +302,10 @@ function loadFromStorage() {
                 }
             };
             
-            console.log('Data loaded from localStorage');
+            console.log('Final workData after loading:', workData);
+            console.log('Daily hours loaded:', workData.dailyHours);
+        } else {
+            console.log('No saved data found in localStorage');
         }
     } catch (error) {
         console.error('Error loading from localStorage:', error);

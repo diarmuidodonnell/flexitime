@@ -220,9 +220,19 @@
                             Your work hours, preferences, and constraints are automatically saved. 
                             You can clear all data if you want to start fresh.
                         </p>
-                        <button class="btn-secondary" onclick="clearAllData()" style="background: var(--danger); color: white; border-color: var(--danger);">
-                            Clear All Data
-                        </button>
+                        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                            <button class="btn-secondary" onclick="testStorage()" style="background: var(--info); color: white; border-color: var(--info);">
+                                Test Storage
+                            </button>
+                            <button class="btn-secondary" onclick="clearAllData()" style="background: var(--danger); color: white; border-color: var(--danger);">
+                                Clear All Data
+                            </button>
+                        </div>
+                        <div id="storageDebug" style="background: var(--gray-50); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; color: var(--gray-700);">
+                            <div>Storage Status: <span id="storageStatus">Checking...</span></div>
+                            <div>Last Save: <span id="lastSave">Never</span></div>
+                            <div>Data Size: <span id="dataSize">0 bytes</span></div>
+                        </div>
                     </div>
                 </div>
             </section>
