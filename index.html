@@ -134,7 +134,7 @@
                             </div>
                             <div class="form-group">
                                 <label for="numDays">Working Days</label>
-                                <input type="number" id="numDays" min="1" max="7" value="5" placeholder="5">
+                                <input type="number" id="numDays" min="1" max="7" value="5" placeholder="5" onchange="if(this.value > 7) { alert('Maximum of 7 work days allowed.'); this.value = 7; }">
                             </div>
                         </div>
                     </div>

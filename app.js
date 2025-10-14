@@ -655,6 +655,15 @@ function handleTargetChange() {
 }
 
 function handleDaysChange() {
+    const numDays = parseInt(this.value);
+    
+    // Validate maximum 7 work days
+    if (numDays > 7) {
+        alert('Maximum of 7 work days allowed. Please select 7 or fewer days.');
+        this.value = Math.min(numDays, 7);
+        return;
+    }
+    
     initializeScheduleInputs();
     loadConstraints();
     updateDashboard();
@@ -870,30 +879,41 @@ function generateInsights(totalWorked, target, remaining, unworkedDays, workedDa
             });
             
             // Generate schedule suggestions based on preferences and constraints
-            const scheduleSuggestion = generateOptimalSchedule(remaining, unworkedDays);
+            const scheduleResult = generateOptimalSchedule(remaining, unworkedDays);
             
-            suggestions.push({
-                type: avgHoursNeeded > 10 ? 'warning' : avgHoursNeeded > 8 ? 'info' : 'success',
-                icon: avgHoursNeeded > 10 ? '⚠️' : avgHoursNeeded > 8 ? '💼' : '✅',
-                title: 'Recommended Schedule',
-                body: avgHoursNeeded > 10 
-                    ? `Warning: You need to average ${avgHoursNeeded.toFixed(1)} hours per day, which is quite high. Consider if this is sustainable or if you need to adjust your weekly target.`
-                    : avgHoursNeeded > 8
-                    ? `You'll need to work ${avgHoursNeeded.toFixed(1)} hours per day on average. This is manageable but plan for longer days.`
-                    : `Great news! You only need ${avgHoursNeeded.toFixed(1)} hours per day on average. This leaves room for flexibility!`,
-                schedule: scheduleSuggestion
-            });
-            
-            // Check constraints
-            const constraintWarnings = checkConstraints(scheduleSuggestion);
-            if (constraintWarnings.length > 0) {
+            if (scheduleResult.error) {
                 suggestions.push({
                     type: 'warning',
-                    icon: '🚧',
-                    title: 'Constraint Conflicts',
-                    body: 'The following constraints may conflict with your schedule:',
-                    list: constraintWarnings
+                    icon: '⚠️',
+                    title: 'Schedule Generation Failed',
+                    body: scheduleResult.message
                 });
+            } else {
+                suggestions.push({
+                    type: avgHoursNeeded > 10 ? 'warning' : avgHoursNeeded > 8 ? 'info' : 'success',
+                    icon: avgHoursNeeded > 10 ? '⚠️' : avgHoursNeeded > 8 ? '💼' : '✅',
+                    title: 'Recommended Schedule',
+                    body: avgHoursNeeded > 10 
+                        ? `Warning: You need to average ${avgHoursNeeded.toFixed(1)} hours per day, which is quite high. Consider if this is sustainable or if you need to adjust your weekly target.`
+                        : avgHoursNeeded > 8
+                        ? `You'll need to work ${avgHoursNeeded.toFixed(1)} hours per day on average. This is manageable but plan for longer days.`
+                        : `Great news! You only need ${avgHoursNeeded.toFixed(1)} hours per day on average. This leaves room for flexibility!`,
+                    schedule: scheduleResult.schedule
+                });
+            }
+            
+            // Check constraints only if schedule was generated successfully
+            if (!scheduleResult.error) {
+                const constraintWarnings = checkConstraints(scheduleResult.schedule);
+                if (constraintWarnings.length > 0) {
+                    suggestions.push({
+                        type: 'warning',
+                        icon: '🚧',
+                        title: 'Constraint Conflicts',
+                        body: 'The following constraints may conflict with your schedule:',
+                        list: constraintWarnings
+                    });
+                }
             }
             
             // Work pattern analysis
@@ -963,96 +983,217 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
     const earliestStart = prefs.earliestStart;
     const latestEnd = prefs.latestEnd;
     
-    const idealDayLength = calculateHoursBetween(idealStart, idealEnd);
     const maxDayLength = calculateHoursBetween(earliestStart, latestEnd);
+    const maxNetDayLength = calculateNetWorkHours(earliestStart, latestEnd);
     
-    const schedule = [];
-    let hoursLeft = remainingHours;
+    // Validate maximum 7 work days
+    if (unworkedDays.length > 7) {
+        return {
+            error: true,
+            message: "Maximum of 7 work days allowed. Please reduce the number of working days.",
+            schedule: []
+        };
+    }
     
-    // Calculate a more flexible distribution of hours
-    const numDays = unworkedDays.length;
-    const baseHoursPerDay = Math.floor(remainingHours / numDays);
-    const extraHours = remainingHours % numDays;
+    // Calculate maximum possible hours across all available days
+    let maxPossibleHours = 0;
+    const dayConstraints = [];
     
     unworkedDays.forEach((day, index) => {
         const dayIndex = workData.dailyHours.indexOf(day);
         const dayConstraint = workData.constraints.find(c => c.day === dayIndex);
         
-        // Distribute hours more flexibly - give extra hours to first few days
-        let dayHours = baseHoursPerDay;
-        if (index < extraHours) {
-            dayHours += 1;
-        }
+        let maxHoursForDay = maxNetDayLength;
         
-        // Ensure we don't exceed maximum possible hours for the day
-        dayHours = Math.min(dayHours, maxDayLength);
-        
-        let startTime, endTime;
-        
-        // Apply constraints first
+        // Apply constraints
         if (dayConstraint) {
             if (dayConstraint.type === 'mustLeaveBy') {
-                endTime = dayConstraint.value;
-                const maxPossibleHours = calculateHoursBetween(earliestStart, endTime);
-                dayHours = Math.min(dayHours, maxPossibleHours);
-                startTime = subtractHours(endTime, dayHours);
-                
-                // Ensure start time is not before earliest start
-                if (startTime < earliestStart) {
-                    startTime = earliestStart;
-                    dayHours = calculateHoursBetween(startTime, endTime);
-                }
+                const maxGrossHours = calculateHoursBetween(earliestStart, dayConstraint.value);
+                maxHoursForDay = calculateNetWorkHours(earliestStart, dayConstraint.value);
             } else if (dayConstraint.type === 'mustStartAfter') {
-                startTime = dayConstraint.value;
-                const maxPossibleHours = calculateHoursBetween(startTime, latestEnd);
-                dayHours = Math.min(dayHours, maxPossibleHours);
-                endTime = addHours(startTime, dayHours);
-                
-                // Ensure end time is not after latest end
-                if (endTime > latestEnd) {
-                    endTime = latestEnd;
-                    dayHours = calculateHoursBetween(startTime, endTime);
-                }
+                const maxGrossHours = calculateHoursBetween(dayConstraint.value, latestEnd);
+                maxHoursForDay = calculateNetWorkHours(dayConstraint.value, latestEnd);
             } else if (dayConstraint.type === 'maxHours') {
-                dayHours = Math.min(dayHours, parseFloat(dayConstraint.value));
-                startTime = idealStart;
-                endTime = addHours(startTime, dayHours);
+                maxHoursForDay = Math.min(maxHoursForDay, parseFloat(dayConstraint.value));
             }
-        } else {
-            // No constraints - try to use ideal times first
-            startTime = idealStart;
-            endTime = addHours(startTime, dayHours);
-            
-            // Use the helper function to ensure times are valid
-            const adjusted = adjustTimeToWorkHours(startTime, endTime, earliestStart, latestEnd, dayHours);
-            startTime = adjusted.startTime;
-            endTime = adjusted.endTime;
-            dayHours = adjusted.hours;
         }
         
-        // Final validation - ensure times are within work hours
-        if (!isValidTimeRange(startTime, endTime, earliestStart, latestEnd)) {
-            startTime = earliestStart;
-            endTime = latestEnd;
-            dayHours = calculateHoursBetween(startTime, endTime);
-        }
-        
-        const grossHours = calculateHoursBetween(startTime, endTime);
-        const netHours = calculateNetWorkHours(startTime, endTime);
-        
-        schedule.push({
-            day: day.day || dayNames[dayIndex],
-            start: startTime,
-            end: endTime,
-            grossHours: grossHours,
-            netHours: netHours,
-            hours: netHours
+        dayConstraints.push({
+            dayIndex: dayIndex,
+            constraint: dayConstraint,
+            maxHours: maxHoursForDay
         });
         
-        hoursLeft -= netHours;
+        maxPossibleHours += maxHoursForDay;
     });
     
-    return schedule;
+    // Check if target is achievable
+    if (remainingHours > maxPossibleHours) {
+        return {
+            error: true,
+            message: `Cannot reach target of ${remainingHours.toFixed(1)} hours with current constraints. Maximum possible: ${maxPossibleHours.toFixed(1)} hours. Please adjust your constraints or reduce your target.`,
+            schedule: []
+        };
+    }
+    
+    // Generate schedule using a more sophisticated algorithm
+    const schedule = [];
+    let hoursLeft = remainingHours;
+    
+    // Sort days by flexibility (most flexible first)
+    const sortedDays = dayConstraints
+        .map((constraint, index) => ({ ...constraint, originalIndex: index }))
+        .sort((a, b) => b.maxHours - a.maxHours);
+    
+    // Distribute hours using a greedy approach
+    for (let i = 0; i < sortedDays.length; i++) {
+        const dayConstraint = sortedDays[i];
+        const remainingDays = sortedDays.length - i;
+        
+        // Calculate how many hours to assign to this day
+        let dayHours;
+        if (i === sortedDays.length - 1) {
+            // Last day - assign all remaining hours
+            dayHours = hoursLeft;
+        } else {
+            // Distribute hours more evenly, but respect constraints
+            const averageRemaining = hoursLeft / remainingDays;
+            dayHours = Math.min(dayHours, dayConstraint.maxHours);
+            dayHours = Math.max(0, Math.min(dayHours, averageRemaining * 1.2)); // Allow some flexibility
+        }
+        
+        // Ensure we don't exceed the day's maximum
+        dayHours = Math.min(dayHours, dayConstraint.maxHours);
+        
+        // Generate times for this day
+        const times = generateDaySchedule(dayHours, dayConstraint, prefs);
+        
+        if (times.error) {
+            return {
+                error: true,
+                message: times.message,
+                schedule: []
+            };
+        }
+        
+        schedule.push({
+            day: dayNames[dayConstraint.dayIndex],
+            start: times.startTime,
+            end: times.endTime,
+            grossHours: times.grossHours,
+            netHours: times.netHours,
+            hours: times.netHours
+        });
+        
+        hoursLeft -= times.netHours;
+    }
+    
+    // Verify total hours match target
+    const totalHours = schedule.reduce((sum, day) => sum + day.hours, 0);
+    if (Math.abs(totalHours - remainingHours) > 0.1) {
+        return {
+            error: true,
+            message: `Schedule generation error: Expected ${remainingHours.toFixed(1)} hours, got ${totalHours.toFixed(1)} hours. Please try again.`,
+            schedule: []
+        };
+    }
+    
+    return {
+        error: false,
+        schedule: schedule
+    };
+}
+
+function generateDaySchedule(targetHours, dayConstraint, prefs) {
+    const { earliestStart, latestEnd, idealStart, idealEnd } = prefs;
+    
+    // Calculate gross hours needed (accounting for break deduction)
+    const grossHours = targetHours >= 6 ? targetHours + 0.5 : targetHours;
+    
+    let startTime, endTime;
+    
+    // Apply constraints
+    if (dayConstraint.constraint) {
+        if (dayConstraint.constraint.type === 'mustLeaveBy') {
+            endTime = dayConstraint.constraint.value;
+            startTime = subtractHours(endTime, grossHours);
+            
+            // Ensure start time is not before earliest start
+            if (startTime < earliestStart) {
+                startTime = earliestStart;
+                const actualGrossHours = calculateHoursBetween(startTime, endTime);
+                const actualNetHours = calculateNetWorkHours(startTime, endTime);
+                
+                if (actualNetHours < targetHours * 0.9) { // Allow 10% tolerance
+                    return {
+                        error: true,
+                        message: `Cannot fit ${targetHours.toFixed(1)} hours on ${dayNames[dayConstraint.dayIndex]} with "must leave by ${endTime}" constraint.`
+                    };
+                }
+            }
+        } else if (dayConstraint.constraint.type === 'mustStartAfter') {
+            startTime = dayConstraint.constraint.value;
+            endTime = addHours(startTime, grossHours);
+            
+            // Ensure end time is not after latest end
+            if (endTime > latestEnd) {
+                endTime = latestEnd;
+                const actualGrossHours = calculateHoursBetween(startTime, endTime);
+                const actualNetHours = calculateNetWorkHours(startTime, endTime);
+                
+                if (actualNetHours < targetHours * 0.9) { // Allow 10% tolerance
+                    return {
+                        error: true,
+                        message: `Cannot fit ${targetHours.toFixed(1)} hours on ${dayNames[dayConstraint.dayIndex]} with "must start after ${startTime}" constraint.`
+                    };
+                }
+            }
+        } else if (dayConstraint.constraint.type === 'maxHours') {
+            const maxHours = parseFloat(dayConstraint.constraint.value);
+            if (targetHours > maxHours) {
+                return {
+                    error: true,
+                    message: `Cannot assign ${targetHours.toFixed(1)} hours to ${dayNames[dayConstraint.dayIndex]} - maximum allowed is ${maxHours} hours.`
+                };
+            }
+            startTime = idealStart;
+            endTime = addHours(startTime, grossHours);
+        }
+    } else {
+        // No constraints - use ideal times
+        startTime = idealStart;
+        endTime = addHours(startTime, grossHours);
+        
+        // Adjust if needed
+        if (endTime > latestEnd) {
+            endTime = latestEnd;
+            startTime = subtractHours(endTime, grossHours);
+            
+            if (startTime < earliestStart) {
+                startTime = earliestStart;
+                endTime = latestEnd;
+            }
+        }
+    }
+    
+    // Final validation
+    if (startTime >= endTime) {
+        return {
+            error: true,
+            message: `Invalid time range for ${dayNames[dayConstraint.dayIndex]}: start time (${startTime}) must be before end time (${endTime}).`
+        };
+    }
+    
+    const actualGrossHours = calculateHoursBetween(startTime, endTime);
+    const actualNetHours = calculateNetWorkHours(startTime, endTime);
+    
+    return {
+        error: false,
+        startTime: startTime,
+        endTime: endTime,
+        grossHours: actualGrossHours,
+        netHours: actualNetHours
+    };
 }
 
 function addHours(time, hours) {
