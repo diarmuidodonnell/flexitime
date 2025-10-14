@@ -31,43 +31,43 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('idealStart').addEventListener('change', savePreferences);
     document.getElementById('idealEnd').addEventListener('change', savePreferences);
     
-    // Save data when the page is about to be unloaded (important for PWA)
+    // Save data when the page is about to be unloaded (important for PWA) - silent
     window.addEventListener('beforeunload', function() {
         console.log('Page is about to unload, saving data...');
-        saveToStorage();
+        saveToStorageSilent();
     });
     
-    // Save data when the page becomes hidden (when PWA is closed)
+    // Save data when the page becomes hidden (when PWA is closed) - silent
     document.addEventListener('visibilitychange', function() {
         if (document.hidden) {
             console.log('Page is hidden, saving data...');
-            saveToStorage();
+            saveToStorageSilent();
         }
     });
     
-    // Save data when the page is about to be hidden (iOS Safari specific)
+    // Save data when the page is about to be hidden (iOS Safari specific) - silent
     window.addEventListener('pagehide', function() {
         console.log('Page is being hidden, saving data...');
-        saveToStorage();
+        saveToStorageSilent();
     });
     
-    // Additional save on focus loss (when switching apps)
+    // Additional save on focus loss (when switching apps) - silent
     window.addEventListener('blur', function() {
         console.log('Window lost focus, saving data...');
-        saveToStorage();
+        saveToStorageSilent();
     });
     
-    // Periodic save as backup (every 30 seconds)
+    // Periodic save as backup (every 30 seconds) - silent
     setInterval(function() {
         console.log('Periodic save...');
-        saveToStorage();
+        saveToStorageSilent();
     }, 30000);
     
-    // Save data when inputs change (additional safety)
+    // Save data when inputs change (additional safety) - silent
     document.addEventListener('input', function(event) {
         if (event.target.type === 'time' || event.target.type === 'number') {
             console.log('Input changed, saving data...');
-            setTimeout(saveToStorage, 100); // Small delay to ensure value is updated
+            setTimeout(saveToStorageSilent, 100); // Small delay to ensure value is updated
         }
     });
 });
@@ -124,6 +124,22 @@ function saveToStorage() {
     } catch (error) {
         console.error('Error saving to localStorage:', error);
         showErrorNotification('Failed to save data');
+    }
+}
+
+function saveToStorageSilent() {
+    try {
+        // Create a deep copy to avoid reference issues
+        const dataToSave = JSON.parse(JSON.stringify(workData));
+        
+        // Save all work data to localStorage
+        localStorage.setItem('flexitime_workData', JSON.stringify(dataToSave));
+        console.log('Data saved silently to localStorage');
+        
+        // Update storage status without showing notification
+        updateStorageStatus();
+    } catch (error) {
+        console.error('Error saving to localStorage silently:', error);
     }
 }
 
@@ -354,16 +370,29 @@ function initializeScheduleInputs() {
             <div class="day-inputs">
                 <div class="form-group">
                     <label>Start Time</label>
-                    <input type="time" id="start-${i}" value="${dayData.start}" onchange="calculateDayHours(${i})">
+                    <div id="start-container-${i}"></div>
                 </div>
                 <div class="form-group">
                     <label>End Time</label>
-                    <input type="time" id="end-${i}" value="${dayData.end}" onchange="calculateDayHours(${i})">
+                    <div id="end-container-${i}"></div>
                 </div>
             </div>
         `;
         
         container.appendChild(dayCard);
+        
+        // Create custom time selects
+        const startContainer = document.getElementById(`start-container-${i}`);
+        const endContainer = document.getElementById(`end-container-${i}`);
+        
+        const startSelect = createTimeSelect(`start-${i}`, dayData.start, workData.preferences.earliestStart, workData.preferences.latestEnd);
+        const endSelect = createTimeSelect(`end-${i}`, dayData.end, workData.preferences.earliestStart, workData.preferences.latestEnd);
+        
+        startSelect.addEventListener('change', () => calculateDayHours(i));
+        endSelect.addEventListener('change', () => calculateDayHours(i));
+        
+        startContainer.appendChild(startSelect);
+        endContainer.appendChild(endSelect);
     }
 }
 
@@ -399,7 +428,7 @@ function calculateDayHours(dayIndex) {
     }
     
     updateDashboard();
-    saveToStorage();
+    saveToStorageSilent();
 }
 
 function calculateHoursBetween(startTime, endTime) {
@@ -474,11 +503,79 @@ function adjustTimeToWorkHours(startTime, endTime, earliestStart, latestEnd, tar
     return { startTime: adjustedStart, endTime: adjustedEnd, hours: actualHours };
 }
 
+function generateTimeOptions(earliestStart, latestEnd) {
+    const options = [];
+    const [earliestHour, earliestMin] = earliestStart.split(':').map(Number);
+    const [latestHour, latestMin] = latestEnd.split(':').map(Number);
+    
+    // Add 30 minutes buffer before earliest start
+    let startHour = earliestHour;
+    let startMin = earliestMin - 30;
+    if (startMin < 0) {
+        startHour -= 1;
+        startMin += 60;
+    }
+    
+    // Add 30 minutes buffer after latest end
+    let endHour = latestHour;
+    let endMin = latestMin + 30;
+    if (endMin >= 60) {
+        endHour += 1;
+        endMin -= 60;
+    }
+    
+    // Generate time options in 15-minute intervals
+    let currentHour = startHour;
+    let currentMin = startMin;
+    
+    while (currentHour < endHour || (currentHour === endHour && currentMin <= endMin)) {
+        const timeString = `${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`;
+        options.push(timeString);
+        
+        currentMin += 15;
+        if (currentMin >= 60) {
+            currentHour += 1;
+            currentMin -= 60;
+        }
+    }
+    
+    return options;
+}
+
+function createTimeSelect(name, value, earliestStart, latestEnd) {
+    const options = generateTimeOptions(earliestStart, latestEnd);
+    const select = document.createElement('select');
+    select.className = 'form-control time-select';
+    select.name = name;
+    select.id = name;
+    
+    // Add empty option
+    const emptyOption = document.createElement('option');
+    emptyOption.value = '';
+    emptyOption.textContent = 'Select time';
+    select.appendChild(emptyOption);
+    
+    // Add time options
+    options.forEach(time => {
+        const option = document.createElement('option');
+        option.value = time;
+        option.textContent = time;
+        if (time === value) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+    
+    return select;
+}
+
 function clearAllHours() {
     if (confirm('Clear all logged hours?')) {
         workData.dailyHours.forEach((day, i) => {
-            document.getElementById(`start-${i}`).value = '';
-            document.getElementById(`end-${i}`).value = '';
+            const startSelect = document.getElementById(`start-${i}`);
+            const endSelect = document.getElementById(`end-${i}`);
+            if (startSelect) startSelect.value = '';
+            if (endSelect) endSelect.value = '';
             calculateDayHours(i);
         });
     }
