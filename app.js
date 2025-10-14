@@ -1177,7 +1177,7 @@ function generateDaySchedule(targetHours, dayConstraint, prefs) {
     }
     
     // Final validation
-    if (startTime >= endTime) {
+    if (startTime > endTime) {
         return {
             error: true,
             message: `Invalid time range for ${dayNames[dayConstraint.dayIndex]}: start time (${startTime}) must be before end time (${endTime}).`
