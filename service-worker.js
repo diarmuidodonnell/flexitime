@@ -1,12 +1,12 @@
-const CACHE_NAME = 'flexitime-v2.0';
+const CACHE_NAME = 'flexitime-v2.1';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/flexitime/',
+  '/flexitime/index.html',
+  '/flexitime/style.css',
+  '/flexitime/app.js',
+  '/flexitime/manifest.json',
+  '/flexitime/icon-192.png',
+  '/flexitime/icon-512.png'
 ];
 
 // Install service worker and cache files
@@ -60,7 +60,7 @@ self.addEventListener('fetch', event => {
       .catch(() => {
         // Fallback for offline
         if (event.request.destination === 'document') {
-          return caches.match('/index.html');
+          return caches.match('/flexitime/index.html');
         }
       })
   );
