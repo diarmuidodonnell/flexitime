@@ -37,6 +37,24 @@ body {
     color: var(--gray-900);
     line-height: 1.6;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* iOS Safari specific fixes */
+input,
+select,
+textarea,
+button {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+input[type="time"],
+input[type="number"] {
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
 }
 
 /* Layout */
@@ -57,6 +75,7 @@ body {
     top: 0;
     z-index: 100;
     box-shadow: var(--shadow);
+    overflow-y: auto;
 }
 
 .logo {
@@ -70,6 +89,7 @@ body {
 
 .logo-icon {
     font-size: 32px;
+    flex-shrink: 0;
 }
 
 .logo-text {
@@ -91,6 +111,7 @@ body {
     transition: all 0.2s;
     color: var(--gray-700);
     font-weight: 500;
+    user-select: none;
 }
 
 .nav-item:hover {
@@ -106,6 +127,11 @@ body {
 
 .nav-icon {
     font-size: 20px;
+    flex-shrink: 0;
+}
+
+.nav-label {
+    flex: 1;
 }
 
 /* Main Container */
@@ -658,12 +684,17 @@ body {
 }
 
 @media (max-width: 768px) {
+    .app-wrapper {
+        flex-direction: column;
+    }
+    
     .sidebar {
         width: 100%;
         height: auto;
-        position: relative;
+        position: static;
         border-right: none;
         border-bottom: 1px solid var(--gray-200);
+        padding: 12px 0;
     }
     
     .logo {
@@ -679,33 +710,43 @@ body {
     .nav-menu {
         display: flex;
         overflow-x: auto;
-        padding: 0 12px 12px;
+        padding: 8px 12px;
+        gap: 8px;
+        -webkit-overflow-scrolling: touch;
     }
     
     .nav-item {
         flex-direction: column;
-        padding: 12px;
+        padding: 12px 16px;
         text-align: center;
         min-width: 80px;
         border-right: none;
         border-bottom: 3px solid transparent;
+        border-radius: 8px;
+        white-space: nowrap;
     }
     
     .nav-item.active {
-        background: var(--gray-50);
-        color: var(--primary);
-        border-bottom-color: var(--primary);
+        background: var(--primary);
+        color: var(--white);
+        border-bottom-color: var(--primary-dark);
         border-right: none;
     }
     
     .nav-label {
         display: block;
-        font-size: 12px;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+    
+    .nav-icon {
+        font-size: 18px;
     }
     
     .main-container {
         margin-left: 0;
         padding: 20px;
+        width: 100%;
     }
     
     .section-header h1 {
