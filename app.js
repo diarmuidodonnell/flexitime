@@ -692,8 +692,6 @@ function savePreferences() {
     workData.preferences.idealStart = document.getElementById('idealStart').value;
     workData.preferences.idealEnd = document.getElementById('idealEnd').value;
     saveToStorage();
-    // Auto-generate and navigate to suggestions after preferences are set
-    calculateAndShow();
 }
 
 // Constraints Management
@@ -741,20 +739,17 @@ function addConstraint() {
     // Add event listeners
     document.getElementById(`constraint-day-${constraintId}`).addEventListener('change', function() {
         updateConstraint(constraintId, 'day', parseInt(this.value));
-        calculateAndShow();
     });
     
     document.getElementById(`constraint-type-${constraintId}`).addEventListener('change', function() {
         updateConstraint(constraintId, 'type', this.value);
         updateConstraintInputType(constraintId, this.value);
-        calculateAndShow();
     });
     
     const valueEl = document.getElementById(`constraint-value-${constraintId}`);
     if (valueEl.type === 'time') valueEl.step = 900;
     valueEl.addEventListener('change', function() {
         updateConstraint(constraintId, 'value', this.value);
-        calculateAndShow();
     });
     
     saveToStorage();
@@ -801,14 +796,12 @@ function loadConstraints() {
         document.getElementById(`constraint-type-${constraint.id}`).addEventListener('change', function() {
             updateConstraint(constraint.id, 'type', this.value);
             updateConstraintInputType(constraint.id, this.value);
-            calculateAndShow();
         });
         
         const valueEl = document.getElementById(`constraint-value-${constraint.id}`);
         if (valueEl.type === 'time') valueEl.step = 900;
         valueEl.addEventListener('change', function() {
             updateConstraint(constraint.id, 'value', this.value);
-            calculateAndShow();
         });
     });
 }
