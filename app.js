@@ -1014,7 +1014,10 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
                 const maxGrossHours = calculateHoursBetween(dayConstraint.value, latestEnd);
                 maxHoursForDay = calculateNetWorkHours(dayConstraint.value, latestEnd);
             } else if (dayConstraint.type === 'maxHours') {
-                maxHoursForDay = Math.min(maxHoursForDay, parseFloat(dayConstraint.value));
+                const parsedMax = parseFloat(dayConstraint.value);
+                if (Number.isFinite(parsedMax)) {
+                    maxHoursForDay = Math.min(maxHoursForDay, parsedMax);
+                }
             }
         }
         
@@ -1058,12 +1061,17 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
         } else {
             // Distribute hours more evenly, but respect constraints
             const averageRemaining = hoursLeft / remainingDays;
-            dayHours = Math.min(dayHours, dayConstraint.maxHours);
-            dayHours = Math.max(0, Math.min(dayHours, averageRemaining * 1.2)); // Allow some flexibility
+            const safeAverage = Number.isFinite(averageRemaining) ? Math.max(0, averageRemaining) : 0;
+            const safeMax = Number.isFinite(dayConstraint.maxHours) ? Math.max(0, dayConstraint.maxHours) : 0;
+            dayHours = Math.min(safeMax, safeAverage * 1.2); // Allow some flexibility
         }
         
         // Ensure we don't exceed the day's maximum
-        dayHours = Math.min(dayHours, dayConstraint.maxHours);
+        {
+            const safeMax = Number.isFinite(dayConstraint.maxHours) ? Math.max(0, dayConstraint.maxHours) : 0;
+            const safeDayHours = Number.isFinite(dayHours) ? Math.max(0, dayHours) : 0;
+            dayHours = Math.min(safeDayHours, safeMax);
+        }
         
         // Generate times for this day
         const times = generateDaySchedule(dayHours, dayConstraint, prefs);
@@ -1108,6 +1116,12 @@ function generateDaySchedule(targetHours, dayConstraint, prefs) {
     const { earliestStart, latestEnd, idealStart, idealEnd } = prefs;
     
     // Calculate gross hours needed (accounting for break deduction)
+    if (!Number.isFinite(targetHours) || targetHours < 0) {
+        return {
+            error: true,
+            message: `Invalid target hours (${targetHours}) for ${dayNames[dayConstraint.dayIndex]}.`
+        };
+    }
     const grossHours = targetHours >= 6 ? targetHours + 0.5 : targetHours;
     
     let startTime, endTime;
@@ -1149,7 +1163,8 @@ function generateDaySchedule(targetHours, dayConstraint, prefs) {
                 }
             }
         } else if (dayConstraint.constraint.type === 'maxHours') {
-            const maxHours = parseFloat(dayConstraint.constraint.value);
+            const parsedMax = parseFloat(dayConstraint.constraint.value);
+            const maxHours = Number.isFinite(parsedMax) ? parsedMax : 0;
             if (targetHours > maxHours) {
                 return {
                     error: true,
@@ -1177,12 +1192,18 @@ function generateDaySchedule(targetHours, dayConstraint, prefs) {
     }
     
     // Final validation
-    //if (startTime > endTime && startTime !== "(NaN:NaN)") {
-    //    return {
-    //        error: true,
-    //        message: `Invalid time range for ${dayNames[dayConstraint.dayIndex]}: start time (${startTime}) must be before end time (${endTime}).`
-    //    };
-    //}
+    if (!isValidTimeString(startTime) || !isValidTimeString(endTime)) {
+        return {
+            error: true,
+            message: `Invalid time calculation for ${dayNames[dayConstraint.dayIndex]} (start: ${startTime}, end: ${endTime}).`
+        };
+    }
+    if (startTime > endTime) {
+        return {
+            error: true,
+            message: `Invalid time range for ${dayNames[dayConstraint.dayIndex]}: start time (${startTime}) must be before end time (${endTime}).`
+        };
+    }
     
     const actualGrossHours = calculateHoursBetween(startTime, endTime);
     const actualNetHours = calculateNetWorkHours(startTime, endTime);
@@ -1197,6 +1218,9 @@ function generateDaySchedule(targetHours, dayConstraint, prefs) {
 }
 
 function addHours(time, hours) {
+    if (!isValidTimeString(time) || !Number.isFinite(hours)) {
+        return time;
+    }
     const [hour, min] = time.split(':').map(Number);
     const totalMinutes = (hour * 60) + min + (hours * 60);
     const newHour = Math.floor(totalMinutes / 60);
@@ -1211,6 +1235,9 @@ function addHours(time, hours) {
 }
 
 function subtractHours(time, hours) {
+    if (!isValidTimeString(time) || !Number.isFinite(hours)) {
+        return time;
+    }
     const [hour, min] = time.split(':').map(Number);
     let totalMinutes = (hour * 60) + min - (hours * 60);
     
@@ -1222,6 +1249,19 @@ function subtractHours(time, hours) {
     const newHour = Math.floor(totalMinutes / 60);
     const newMin = Math.floor(totalMinutes % 60);
     return `${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`;
+}
+
+function isValidTimeString(time) {
+    if (typeof time !== 'string') return false;
+    const match = time.match(/^\d{2}:\d{2}$/);
+    if (!match) return false;
+    const [hourStr, minStr] = time.split(':');
+    const hour = Number(hourStr);
+    const min = Number(minStr);
+    if (!Number.isInteger(hour) || !Number.isInteger(min)) return false;
+    if (hour < 0 || hour > 23) return false;
+    if (min < 0 || min > 59) return false;
+    return true;
 }
 
 function checkConstraints(schedule) {
