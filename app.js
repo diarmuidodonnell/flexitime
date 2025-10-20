@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadConstraints();
     updateDashboard();
     updateStorageStatus();
+    navigateTo('constraints');
     
     // Event Listeners
     document.getElementById('weeklyTarget').addEventListener('change', handleTargetChange);
@@ -405,8 +406,11 @@ function calculateDayHours(dayIndex) {
     const totalDisplay = document.getElementById(`total-${dayIndex}`);
     const dayCard = document.getElementById(`day-${dayIndex}`);
     
-    const start = startInput.value;
-    const end = endInput.value;
+    let start = startInput.value;
+    let end = endInput.value;
+    // Ensure values are aligned to 15-minute increments (safety)
+    if (start) start = roundTimeToQuarter(start);
+    if (end) end = roundTimeToQuarter(end);
     
     if (start && end) {
         const grossHours = calculateHoursBetween(start, end);
@@ -422,7 +426,8 @@ function calculateDayHours(dayIndex) {
         };
         
         // Display net hours (break deduction applied behind the scenes)
-        totalDisplay.textContent = `${netHours.toFixed(1)} hrs`;
+        const roundedDisplayHours = Math.round(netHours * 4) / 4;
+        totalDisplay.textContent = `${roundedDisplayHours.toFixed(2).replace(/\.00$/, '.00').replace(/(\.25|\.50|\.75)$/, (m)=>m)} hrs`;
         
         if (netHours > 0) {
             dayCard.classList.add('completed');
@@ -443,6 +448,13 @@ function calculateDayHours(dayIndex) {
     }
     
     updateDashboard();
+    // Auto-refresh insights/schedule suggestions when hours change
+    const totalWorked = workData.dailyHours.reduce((sum, day) => sum + day.hours, 0);
+    const target = parseFloat(document.getElementById('weeklyTarget').value) || 40;
+    const remaining = target - totalWorked;
+    const unworkedDays = workData.dailyHours.filter(day => day.hours === 0);
+    const workedDays = workData.dailyHours.filter(day => day.hours > 0);
+    generateInsights(totalWorked, target, remaining, unworkedDays, workedDays);
     saveToStorageSilent();
 }
 
@@ -462,8 +474,10 @@ function calculateHoursBetween(startTime, endTime) {
     if (hours < 0) {
         hours += 24;
     }
-    
-    return hours + (minutes / 60);
+    // Round to nearest 15-minute increment
+    const totalMinutes = (hours * 60) + minutes;
+    const roundedMinutes = Math.round(totalMinutes / 15) * 15;
+    return roundedMinutes / 60;
 }
 
 function calculateNetWorkHours(startTime, endTime) {
@@ -471,7 +485,9 @@ function calculateNetWorkHours(startTime, endTime) {
     
     // Apply 30-minute unpaid break deduction for workdays of 6+ hours
     if (grossHours >= 6) {
-        return Math.max(0, grossHours - 0.5); // Deduct 30 minutes (0.5 hours)
+        const net = Math.max(0, grossHours - 0.5); // Deduct 30 minutes (0.5 hours)
+        // Keep net to nearest 15 minutes
+        return Math.round(net * 4) / 4;
     }
     
     return grossHours;
@@ -611,12 +627,12 @@ function clearAllHours() {
 function updateDashboard() {
     const totalWorked = workData.dailyHours.reduce((sum, day) => sum + day.hours, 0);
     const target = parseFloat(document.getElementById('weeklyTarget').value) || 40;
-    const remaining = target - totalWorked;
+    const remaining = Math.round((target - totalWorked) * 4) / 4;
     const progress = (totalWorked / target) * 100;
     
-    document.getElementById('totalWorked').textContent = totalWorked.toFixed(1);
-    document.getElementById('targetHours').textContent = target.toFixed(1);
-    document.getElementById('remainingHours').textContent = remaining.toFixed(1);
+    document.getElementById('totalWorked').textContent = (Math.round(totalWorked * 4) / 4).toFixed(2).replace(/\.00$/, '.00');
+    document.getElementById('targetHours').textContent = (Math.round(target * 4) / 4).toFixed(2).replace(/\.00$/, '.00');
+    document.getElementById('remainingHours').textContent = (Math.round(remaining * 4) / 4).toFixed(2).replace(/\.00$/, '.00');
     document.getElementById('progressPercent').textContent = Math.min(progress, 100).toFixed(0) + '%';
     document.getElementById('progressBar').style.width = Math.min(progress, 100) + '%';
     
@@ -676,6 +692,8 @@ function savePreferences() {
     workData.preferences.idealStart = document.getElementById('idealStart').value;
     workData.preferences.idealEnd = document.getElementById('idealEnd').value;
     saveToStorage();
+    // Auto-generate and navigate to suggestions after preferences are set
+    calculateAndShow();
 }
 
 // Constraints Management
@@ -723,15 +741,20 @@ function addConstraint() {
     // Add event listeners
     document.getElementById(`constraint-day-${constraintId}`).addEventListener('change', function() {
         updateConstraint(constraintId, 'day', parseInt(this.value));
+        calculateAndShow();
     });
     
     document.getElementById(`constraint-type-${constraintId}`).addEventListener('change', function() {
         updateConstraint(constraintId, 'type', this.value);
         updateConstraintInputType(constraintId, this.value);
+        calculateAndShow();
     });
     
-    document.getElementById(`constraint-value-${constraintId}`).addEventListener('change', function() {
+    const valueEl = document.getElementById(`constraint-value-${constraintId}`);
+    if (valueEl.type === 'time') valueEl.step = 900;
+    valueEl.addEventListener('change', function() {
         updateConstraint(constraintId, 'value', this.value);
+        calculateAndShow();
     });
     
     saveToStorage();
@@ -778,10 +801,14 @@ function loadConstraints() {
         document.getElementById(`constraint-type-${constraint.id}`).addEventListener('change', function() {
             updateConstraint(constraint.id, 'type', this.value);
             updateConstraintInputType(constraint.id, this.value);
+            calculateAndShow();
         });
         
-        document.getElementById(`constraint-value-${constraint.id}`).addEventListener('change', function() {
+        const valueEl = document.getElementById(`constraint-value-${constraint.id}`);
+        if (valueEl.type === 'time') valueEl.step = 900;
+        valueEl.addEventListener('change', function() {
             updateConstraint(constraint.id, 'value', this.value);
+            calculateAndShow();
         });
     });
 }
@@ -797,6 +824,7 @@ function updateConstraintInputType(constraintId, type) {
     } else {
         input.type = 'time';
         input.value = '17:00';
+        input.step = 900;
     }
 }
 
@@ -1072,6 +1100,9 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
             const safeDayHours = Number.isFinite(dayHours) ? Math.max(0, dayHours) : 0;
             dayHours = Math.min(safeDayHours, safeMax);
         }
+
+        // Round assigned hours to nearest 0.25h (15 minutes)
+        dayHours = Math.round(dayHours * 4) / 4;
         
         // Generate times for this day
         const times = generateDaySchedule(dayHours, dayConstraint, prefs);
@@ -1098,10 +1129,11 @@ function generateOptimalSchedule(remainingHours, unworkedDays) {
     
     // Verify total hours match target
     const totalHours = schedule.reduce((sum, day) => sum + day.hours, 0);
-    if (Math.abs(totalHours - remainingHours) > 0.1) {
+    const roundedTarget = Math.round(remainingHours * 4) / 4;
+    if (Math.abs(totalHours - roundedTarget) > 0.11) {
         return {
             error: true,
-            message: `Schedule generation error: Expected ${remainingHours.toFixed(1)} hours, got ${totalHours.toFixed(1)} hours. Please try again.`,
+            message: `Schedule generation error: Expected ${roundedTarget.toFixed(2)} hours, got ${totalHours.toFixed(2)} hours. Please try again.`,
             schedule: []
         };
     }
@@ -1205,6 +1237,9 @@ function generateDaySchedule(targetHours, dayConstraint, prefs) {
         };
     }
     
+    // Ensure final times are aligned to 15 minutes
+    startTime = roundTimeToQuarter(startTime);
+    endTime = roundTimeToQuarter(endTime);
     const actualGrossHours = calculateHoursBetween(startTime, endTime);
     const actualNetHours = calculateNetWorkHours(startTime, endTime);
     
@@ -1231,7 +1266,8 @@ function addHours(time, hours) {
         return "23:59";
     }
     
-    return `${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`;
+    // Round to nearest 15 minutes
+    return roundTimeToQuarter(`${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`);
 }
 
 function subtractHours(time, hours) {
@@ -1248,7 +1284,8 @@ function subtractHours(time, hours) {
     
     const newHour = Math.floor(totalMinutes / 60);
     const newMin = Math.floor(totalMinutes % 60);
-    return `${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`;
+    // Round to nearest 15 minutes
+    return roundTimeToQuarter(`${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`);
 }
 
 function isValidTimeString(time) {
@@ -1262,6 +1299,16 @@ function isValidTimeString(time) {
     if (hour < 0 || hour > 23) return false;
     if (min < 0 || min > 59) return false;
     return true;
+}
+
+function roundTimeToQuarter(time) {
+    if (!isValidTimeString(time)) return time;
+    const [h, m] = time.split(':').map(Number);
+    const total = h * 60 + m;
+    const rounded = Math.round(total / 15) * 15;
+    const newHour = Math.floor(rounded / 60) % 24;
+    const newMin = rounded % 60;
+    return `${String(newHour).padStart(2, '0')}:${String(newMin).padStart(2, '0')}`;
 }
 
 function checkConstraints(schedule) {
@@ -1304,11 +1351,31 @@ function analyzeConsistency(workedDays) {
     const variance = hours.reduce((sum, h) => sum + Math.pow(h - avg, 2), 0) / hours.length;
     const stdDev = Math.sqrt(variance);
     
-    if (stdDev < 1) {
-        return "Your work hours are very consistent, which is great for routine!";
-    } else if (stdDev < 2) {
-        return "You have moderate variation in your work hours, offering good flexibility.";
-    } else {
-        return "Your work hours vary significantly. This offers maximum flexibility but may be harder to maintain a routine.";
+    const avgRounded = Math.round(avg * 4) / 4;
+    const stdRounded = Math.round(stdDev * 4) / 4;
+    const total = hours.reduce((a, b) => a + b, 0);
+    const max = Math.max(...hours);
+    const min = Math.min(...hours);
+    const range = Math.round((max - min) * 4) / 4;
+    
+    if (hours.length <= 1) {
+        return "Not enough data yet. Log more days to analyze your pattern.";
     }
+    
+    if (avgRounded >= 9.5) {
+        return `You average ${avgRounded.toFixed(2)}h per day — watch for burnout; consider shorter days.`;
+    }
+    if (avgRounded <= 4) {
+        return `Light schedule averaging ${avgRounded.toFixed(2)}h per day — room to increase if desired.`;
+    }
+    if (stdRounded < 0.5) {
+        return `Highly consistent pattern (std ≈ ${stdRounded.toFixed(2)}h, range ${range.toFixed(2)}h). Great for routine.`;
+    }
+    if (stdRounded < 1.5) {
+        return `Moderately consistent (std ≈ ${stdRounded.toFixed(2)}h). Healthy balance of routine and flexibility.`;
+    }
+    if (range >= 6) {
+        return `Very wide range (${range.toFixed(2)}h) between your longest and shortest days — consider smoothing.`;
+    }
+    return `High variability (std ≈ ${stdRounded.toFixed(2)}h). Maximizes flexibility but can be hard to maintain.`;
 }
