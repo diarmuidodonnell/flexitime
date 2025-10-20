@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loadConstraints();
     updateDashboard();
     updateStorageStatus();
-    navigateTo('constraints');
     
     // Event Listeners
     document.getElementById('weeklyTarget').addEventListener('change', handleTargetChange);
@@ -448,13 +447,7 @@ function calculateDayHours(dayIndex) {
     }
     
     updateDashboard();
-    // Auto-refresh insights/schedule suggestions when hours change
-    const totalWorked = workData.dailyHours.reduce((sum, day) => sum + day.hours, 0);
-    const target = parseFloat(document.getElementById('weeklyTarget').value) || 40;
-    const remaining = target - totalWorked;
-    const unworkedDays = workData.dailyHours.filter(day => day.hours === 0);
-    const workedDays = workData.dailyHours.filter(day => day.hours > 0);
-    generateInsights(totalWorked, target, remaining, unworkedDays, workedDays);
+    // Do not auto-generate; user triggers generation via buttons
     saveToStorageSilent();
 }
 

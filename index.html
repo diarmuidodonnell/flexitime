@@ -30,13 +30,13 @@
                         <span class="nav-icon">📊</span>
                         <span class="nav-label">Dashboard</span>
                     </li>
-                    <li class="nav-item" data-section="schedule">
-                        <span class="nav-icon">📅</span>
-                        <span class="nav-label">Schedule</span>
-                    </li>
                     <li class="nav-item" data-section="constraints">
                         <span class="nav-icon">⚙️</span>
                         <span class="nav-label">Preferences</span>
+                    </li>
+                    <li class="nav-item" data-section="schedule">
+                        <span class="nav-icon">📅</span>
+                        <span class="nav-label">Schedule</span>
                     </li>
                     <li class="nav-item" data-section="insights">
                         <span class="nav-icon">💡</span>
@@ -212,6 +212,13 @@
                             <p class="empty-state">No constraints added. Click "+ Add Constraint" to add one.</p>
                         </div>
                     </div>
+                </div>
+
+                <div class="action-bar">
+                    <button class="btn-primary btn-lg" onclick="calculateAndShow()">
+                        <span>Generate Timetable</span>
+                        <span class="btn-icon">→</span>
+                    </button>
                 </div>
 
                 <div class="card">
